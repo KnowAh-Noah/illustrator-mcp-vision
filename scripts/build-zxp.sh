@@ -43,6 +43,8 @@ cp "$ROOT/LICENSE" "$STAGE/LICENSE"
 # answered them with "file is missing".
 mkdir -p "$STAGE/docs"
 cp "$ROOT"/docs/*.md "$STAGE/docs/"
+mkdir -p "$STAGE/docs/illustrator"
+cp "$ROOT"/docs/illustrator/*.md "$STAGE/docs/illustrator/"
 
 # The manifest version comes from cep/CSXS/manifest.xml itself, kept in step
 # with package.json by scripts/sync-version.mjs (run by `npm version`) and

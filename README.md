@@ -88,6 +88,39 @@ works on localized installs.
 
 Mutating calls run inside an undo group, so an agent's whole batch is one Cmd-Z.
 
+## Illustrator
+
+The same extension also runs inside **Adobe Illustrator 2023 (27.0) or later**
+(built and measured on 30.8.1). Each app gets its own server, so both can run
+at once: Illustrator listens on `127.0.0.1:8792`, keeps its token in
+`~/.illustrator-mcp-vision/token`, and shows **Window > Extensions >
+Illustrator MCP Vision**. The server starts the first time Illustrator becomes
+the active app.
+
+```bash
+claude mcp add --transport http --scope user illustrator-vision http://127.0.0.1:8792/mcp --header "Authorization: Bearer $(cat ~/.illustrator-mcp-vision/token)"
+```
+
+Ten tools. Items are addressed by `PageItem.uuid`; every position is in points
+from the artboard's top-left with y growing down, the numbers the rulers show.
+
+| Tool | What it does |
+|---|---|
+| `ai_query` | `sessionInfo`, `tree`, `find`, `item`, `selection`, `fonts`, `swatches`, and `describe` |
+| `ai_document` | New, open, save, close, switch documents; add, move, resize and remove artboards |
+| `ai_create` | Rectangles, ellipses, polygons, stars, lines, bezier paths, point and area text, and placed images (embedded, fitted to a box) |
+| `ai_set` | Batched changes with per-item errors: position, size, rotation, paint, opacity, text, path points |
+| `ai_items` | Delete, duplicate, group, clipping masks, ungroup, move to layer, stacking order, selection, outline text |
+| `ai_layers` | Create, rename, show/hide, lock, reorder, delete layers and sublayers |
+| `ai_layout` | Align, distribute and stack - Illustrator's Align panel is not scriptable |
+| `ai_capture` | **Vision:** one artboard, every artboard on one contact sheet, a region, or one item isolated |
+| `ai_export` | PNG, JPG or SVG from one artboard, without re-pointing the open document |
+| `ai_diagnostics` | Missing links, overflowing area text, off-artboard artwork, empty paths; reload the host |
+
+Each call is one undo step. Illustrator docs: [docs/illustrator/INSTALL.md](docs/illustrator/INSTALL.md)
+and [docs/illustrator/RECIPES.md](docs/illustrator/RECIPES.md), also served as
+`illustrator-vision://install` and `illustrator-vision://recipes`.
+
 ## Documentation
 
 | | For |

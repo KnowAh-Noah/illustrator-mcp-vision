@@ -26,15 +26,25 @@ test('resources resolve in the packaged layout, not just a dev checkout', () => 
   const ext = fs.mkdtempSync(path.join(os.tmpdir(), 'ae-ext-'));
   try {
     fs.mkdirSync(path.join(ext, 'server'));
-    fs.copyFileSync(path.join(__dirname, '..', '..', 'cep', 'server', 'docs.js'), path.join(ext, 'server', 'docs.js'));
-    fs.mkdirSync(path.join(ext, 'docs'));
-    for (const f of ['INSTALL.md', 'RECIPES.md', 'CAPABILITIES.md']) {
+    // docs.js reads its resource list from the app profile, so both ship.
+    for (const f of ['docs.js', 'app-profile.js']) {
+      fs.copyFileSync(path.join(__dirname, '..', '..', 'cep', 'server', f), path.join(ext, 'server', f));
+    }
+    fs.mkdirSync(path.join(ext, 'docs', 'illustrator'), { recursive: true });
+    for (const f of ['INSTALL.md', 'RECIPES.md', 'CAPABILITIES.md', 'illustrator/INSTALL.md', 'illustrator/RECIPES.md']) {
       fs.copyFileSync(path.join(__dirname, '..', '..', 'docs', f), path.join(ext, 'docs', f));
     }
     const packaged = require(path.join(ext, 'server', 'docs.js'));
     for (const r of packaged.RESOURCES) {
       const text = packaged.readResource(r.uri).contents[0].text;
       assert.doesNotMatch(text, /missing from this install/, `${r.uri} must resolve inside a packaged extension`);
+    }
+    // Every other app's docs resolve through the same packaged layout.
+    const { PROFILES } = require(path.join(ext, 'server', 'app-profile.js'));
+    for (const p of Object.values(PROFILES)) {
+      for (const r of p.resources) {
+        assert.ok(fs.existsSync(packaged.resolveDoc(r.file)), `${p.id} ${r.uri} must resolve inside a packaged extension`);
+      }
     }
   } finally {
     fs.rmSync(ext, { recursive: true, force: true });
@@ -44,9 +54,9 @@ test('resources resolve in the packaged layout, not just a dev checkout', () => 
 test('every packager ships docs/ into the extension', () => {
   const root = path.join(__dirname, '..', '..');
   const checks = {
-    'scripts/build-zxp.sh': /docs\/\*\.md/,
-    'scripts/build-dmg.sh': /docs\/\*\.md/,
-    'scripts/installer/windows-installer.iss': /docs\\\*\.md/,
+    'scripts/build-zxp.sh': /docs\/\*\.md[\s\S]*docs\/illustrator/,
+    'scripts/build-dmg.sh': /docs\/\*\.md[\s\S]*docs\/illustrator/,
+    'scripts/installer/windows-installer.iss': /docs\\\*\.md[\s\S]*docs\\illustrator/,
   };
   for (const [f, re] of Object.entries(checks)) {
     assert.match(fs.readFileSync(path.join(root, f), 'utf8'), re, `${f} must copy docs/*.md into the package`);

@@ -11,13 +11,16 @@
  */
 
 const { bridgeInfo } = require('./bridge-info.js');
+const { currentProfile } = require('./app-profile.js');
 const http = require('http');
 const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const DEFAULT_PORT = 8791;
+// Per app: 8791 for After Effects, 8792 for Illustrator - see app-profile.js.
+const PROFILE = currentProfile();
+const DEFAULT_PORT = PROFILE.port;
 
 /*
  * Loopback binding alone is not access control. Any local process can reach
@@ -50,7 +53,7 @@ const DEFAULT_PORT = 8791;
  * config on every `npm test` run - a test suite with side effects on real user
  * state is a bug, not a quirk.
  */
-const TOKEN_DIR = process.env.AE_MCP_TOKEN_DIR || path.join(os.homedir(), '.ae-mcp-vision');
+const TOKEN_DIR = process.env[PROFILE.tokenDirEnv] || PROFILE.tokenDir;
 const TOKEN_FILE = path.join(TOKEN_DIR, 'token');
 
 function mintToken() {
@@ -241,13 +244,17 @@ function createServer(callHost, options = {}) {
       let host = { reachable: false };
       try {
         const pong = await callHost('ping', {}, 5000);
-        host = pong.ok ? { reachable: true, aeVersion: pong.result.aeVersion } : { reachable: false, error: pong.error };
+        // After Effects' reply is exactly what it always was; other hosts report
+        // appVersion instead.
+        const version = pong.ok && pong.result.aeVersion !== undefined
+          ? { aeVersion: pong.result.aeVersion } : { appVersion: pong.ok && pong.result.appVersion };
+        host = pong.ok ? { reachable: true, ...version } : { reachable: false, error: pong.error };
       } catch (err) {
         host = { reachable: false, error: String(err) };
       }
       json(res, 200, {
         ok: true,
-        service: 'ae-mcp-vision',
+        service: PROFILE.service,
         bridge: bridgeInfo(),
         nodeVersion: process.version,
         mcpSdkViable: satisfiesNode18(process.version),

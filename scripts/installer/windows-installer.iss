@@ -39,6 +39,7 @@ Source: "..\..\cep\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs cre
 Source: "..\..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 ; Docs served as MCP resources; they live outside cep/, so ship them too.
 Source: "..\..\docs\*.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "..\..\docs\illustrator\*.md"; DestDir: "{app}\docs\illustrator"; Flags: ignoreversion
 
 [Registry]
 ; Unsigned extensions require PlayerDebugMode, set per CSXS major version.

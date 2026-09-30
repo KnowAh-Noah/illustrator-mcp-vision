@@ -26,6 +26,10 @@
       <!-- AE 22.0 floor: Layer.id / app.project.layerByID() land there, and
            stable layer identity is the basis of all addressing in v2. -->
       <Host Name="AEFT" Version="[22.0,99.9]" />
+      <!-- Illustrator 27.0 (2023) floor: PageItem.uuid and
+           Document.getPageItemFromUuid(), the basis of Illustrator addressing.
+           Measured on 30.8.1; 27.x-29.x not yet verified. -->
+      <Host Name="ILST" Version="[27.0,99.9]" />
     </HostList>
     <LocaleList><Locale Code="All" /></LocaleList>
     <RequiredRuntimeList>
@@ -33,13 +37,19 @@
     </RequiredRuntimeList>
   </ExecutionEnvironment>
 
+  <!--
+    One DispatchInfo per host. The ExtendScript host differs per app - each
+    app's scripting DOM is unrelated to the other's, so each gets its own
+    host.jsx - while the Node side is shared and reads the app from CEP at
+    start-up (cep/server/app-profile.js).
+  -->
   <DispatchInfoList>
 
     <Extension Id="com.aemcpvision.bridge.server">
-      <DispatchInfo>
+      <DispatchInfo Host="AEFT">
         <Resources>
           <MainPath>./server.html</MainPath>
-          <ScriptPath>./host/host.jsx</ScriptPath>
+          <ScriptPath>./host/ae/host.jsx</ScriptPath>
           <CEFCommandLine>
             <Parameter>--enable-nodejs</Parameter>
             <Parameter>--mixed-context</Parameter>
@@ -56,13 +66,39 @@
           <Geometry><Size><Height>1</Height><Width>1</Width></Size></Geometry>
         </UI>
       </DispatchInfo>
+      <DispatchInfo Host="ILST">
+        <Resources>
+          <MainPath>./server.html</MainPath>
+          <ScriptPath>./host/ai/host.jsx</ScriptPath>
+          <CEFCommandLine>
+            <Parameter>--enable-nodejs</Parameter>
+            <Parameter>--mixed-context</Parameter>
+          </CEFCommandLine>
+        </Resources>
+        <Lifecycle>
+          <AutoVisible>false</AutoVisible>
+          <StartOn>
+            <!-- Measured on 30.8.1: the server starts when Illustrator first
+                 becomes the active app, not at launch. Unknown event names are
+                 ignored, so the candidates are all listed. -->
+            <Event>com.adobe.csxs.events.ApplicationActivate</Event>
+            <Event>applicationActivate</Event>
+            <Event>com.adobe.csxs.events.ApplicationInitialized</Event>
+            <Event>documentAfterActivate</Event>
+          </StartOn>
+        </Lifecycle>
+        <UI>
+          <Type>Custom</Type>
+          <Geometry><Size><Height>1</Height><Width>1</Width></Size></Geometry>
+        </UI>
+      </DispatchInfo>
     </Extension>
 
     <Extension Id="com.aemcpvision.bridge.panel">
-      <DispatchInfo>
+      <DispatchInfo Host="AEFT">
         <Resources>
           <MainPath>./index.html</MainPath>
-          <ScriptPath>./host/host.jsx</ScriptPath>
+          <ScriptPath>./host/ae/host.jsx</ScriptPath>
           <CEFCommandLine>
             <Parameter>--enable-nodejs</Parameter>
             <Parameter>--mixed-context</Parameter>
@@ -74,6 +110,24 @@
         <UI>
           <Type>Panel</Type>
           <Menu>AE MCP Vision</Menu>
+          <Geometry><Size><Height>320</Height><Width>420</Width></Size></Geometry>
+        </UI>
+      </DispatchInfo>
+      <DispatchInfo Host="ILST">
+        <Resources>
+          <MainPath>./index.html</MainPath>
+          <ScriptPath>./host/ai/host.jsx</ScriptPath>
+          <CEFCommandLine>
+            <Parameter>--enable-nodejs</Parameter>
+            <Parameter>--mixed-context</Parameter>
+          </CEFCommandLine>
+        </Resources>
+        <Lifecycle>
+          <AutoVisible>true</AutoVisible>
+        </Lifecycle>
+        <UI>
+          <Type>Panel</Type>
+          <Menu>Illustrator MCP Vision</Menu>
           <Geometry><Size><Height>320</Height><Width>420</Width></Size></Geometry>
         </UI>
       </DispatchInfo>

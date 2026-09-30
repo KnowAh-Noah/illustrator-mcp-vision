@@ -32,34 +32,8 @@ function resolveDoc(name) {
   return path.join(DOCS_CANDIDATES[0], name);
 }
 
-const RESOURCES = [
-  {
-    uri: 'ae-vision://capabilities',
-    name: 'Capability matrix',
-    description:
-      'Every probed After Effects technique with a pass / fail / needs-human-review verdict, ' +
-      'measured against a live AE build rather than read off the API docs. Read this before ' +
-      'telling a user something is impossible - and before assuming something is possible.',
-    mimeType: 'text/markdown',
-    file: 'CAPABILITIES.md',
-  },
-  {
-    uri: 'ae-vision://recipes',
-    name: 'Authoring recipes and gotchas',
-    description:
-      'How to actually build something: the create-then-style chain, the accepted value shapes ' +
-      'for ae_set, and the measurement traps that silently produce wrong layouts.',
-    mimeType: 'text/markdown',
-    file: 'RECIPES.md',
-  },
-  {
-    uri: 'ae-vision://install',
-    name: 'Install and troubleshooting',
-    description: 'Installation, the signing/Gatekeeper situation, and what to do when the panel will not connect.',
-    mimeType: 'text/markdown',
-    file: 'INSTALL.md',
-  },
-];
+// Each app serves its own docs; see app-profile.js.
+const RESOURCES = require('./app-profile.js').currentProfile().resources;
 
 /** Resource descriptors for resources/list - no file contents. */
 function listResources() {

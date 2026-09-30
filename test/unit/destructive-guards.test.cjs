@@ -33,7 +33,7 @@ test('integration teardown skips anything that pre-existed the run', () => {
 });
 
 test('every app.open / app.newProject call closes without saving first', () => {
-  const lines = read('cep/host/ops-build.jsx').split('\n');
+  const lines = read('cep/host/ae/ops-build.jsx').split('\n');
   // Statement lines only - a prose mention inside a comment is not a call.
   const calls = lines
     .map((line, i) => ({ line, i }))
@@ -52,7 +52,7 @@ test('every app.open / app.newProject call closes without saving first', () => {
 });
 
 test('the close helper discards rather than saves', () => {
-  const src = read('cep/host/util.jsx');
+  const src = read('cep/host/ae/util.jsx');
   const fn = src.slice(src.indexOf('function __mcp_closeWithoutSaving'));
   assert.match(fn, /CloseOptions\.DO_NOT_SAVE_CHANGES/);
   assert.doesNotMatch(fn.slice(0, fn.indexOf('}')), /CloseOptions\.SAVE_CHANGES/);

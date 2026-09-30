@@ -41,8 +41,10 @@ test('the manifest declares both the headless server and the panel', () => {
 
 test('verify-live.sh reads the same token path the server writes', () => {
   const script = fs.readFileSync(path.join(ROOT, 'test/verify-live.sh'), 'utf8');
-  const server = fs.readFileSync(path.join(ROOT, 'cep/server/http-server.js'), 'utf8');
-  const usesHome = /\.ae-mcp-vision/.test(script) && /homedir\(\)/.test(server);
+  // The token folder is per app, defined in app-profile.js and used by
+  // http-server.js.
+  const server = fs.readFileSync(path.join(ROOT, 'cep/server/app-profile.js'), 'utf8');
+  const usesHome = /\.ae-mcp-vision/.test(script) && /homedir\(\), '\.ae-mcp-vision'/.test(server);
   assert.ok(usesHome, 'the live verifier drifted from the server token location');
   assert.doesNotMatch(script, /tmpdir/,
     'verify-live.sh must not read the old temp-dir token path');

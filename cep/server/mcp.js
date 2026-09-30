@@ -9,10 +9,13 @@
  */
 
 const { listResources, readResource } = require('./docs.js');
+const { currentProfile } = require('./app-profile.js');
+
+const PROFILE = currentProfile();
 
 const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
-const SERVER_INFO = { name: 'ae-mcp-vision', version: '2.0.0' };
+const SERVER_INFO = { name: PROFILE.service, version: '2.0.0' };
 
 function rpcResult(id, result) { return { jsonrpc: '2.0', id, result }; }
 function rpcError(id, code, message, data) {
@@ -50,16 +53,7 @@ function createMcpHandler(registry) {
             protocolVersion: version,
             capabilities: { tools: { listChanged: false }, resources: { listChanged: false, subscribe: false } },
             serverInfo: SERVER_INFO,
-            instructions:
-              'Drives a live After Effects session. Start with ae_query ' +
-              "{command:'sessionInfo'} to see what is open, then " +
-              "ae_query {command:'tree'} and {command:'propertyKeys'} to find things. " +
-              'Address everything by the stable ids those return, never by index. ' +
-              'Use ae_capture to look at what you actually built rather than ' +
-              'inferring it from the object tree. ' +
-              'Before authoring anything, read the resource ae-vision://recipes - it carries the ' +
-              'create-then-style chain and the measurement traps that silently produce wrong ' +
-              'layouts. ae-vision://capabilities says what is known to work and what cannot.',
+            instructions: PROFILE.instructions,
           });
         }
 
