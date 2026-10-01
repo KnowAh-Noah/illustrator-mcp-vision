@@ -72,4 +72,16 @@ begin
       Result := False;
     end;
   end;
+  // The same extension also loads into Illustrator, so it has to be closed too.
+  if Result and Exec('cmd.exe', '/C tasklist /FI "IMAGENAME eq Illustrator.exe" | find /I "Illustrator.exe"',
+          '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    if ResultCode = 0 then
+    begin
+      SuppressibleMsgBox('Please quit Illustrator first, then run this installer again.'#13#10#13#10 +
+             'Illustrator loads extensions when it starts, so it needs to be closed during installation.',
+             mbError, MB_OK, IDOK);
+      Result := False;
+    end;
+  end;
 end;

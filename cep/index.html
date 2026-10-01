@@ -82,7 +82,12 @@
         }
         try {
           var os = require('os'), fs = require('fs'), path = require('path');
-          var dir = path.join(os.tmpdir(), 'ae-mcp-vision');
+          // Read the app straight from CEP, not through app-profile.js: loading
+          // the profile is one of the things that can fail at boot. After
+          // Effects keeps its original folder.
+          var app = null;
+          try { app = JSON.parse(window.__adobe_cep__.getHostEnvironment()).appName; } catch (x) {}
+          var dir = path.join(os.tmpdir(), app === 'ILST' ? 'illustrator-mcp-vision' : 'ae-mcp-vision');
           fs.mkdirSync(dir, { recursive: true });
           fs.appendFileSync(path.join(dir, 'boot.log'), new Date().toISOString() + ' panel ' + msg + '\n');
         } catch (e) { /* nothing left to report with */ }

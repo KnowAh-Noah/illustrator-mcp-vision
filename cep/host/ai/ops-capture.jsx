@@ -73,41 +73,73 @@ var __mcp_captureOps = {
     /*
      * One item, cropped to its visible bounds plus padding. isolated (default
      * true) hides everything else for the capture, which separates "drawn but
-     * covered by something" from "not drawn at all". Hidden flags are
-     * recorded and restored exactly, and the whole op is one undo step.
+     * covered by something" from "not drawn at all".
+     *
+     * Locked artwork - usually the background - cannot be hidden while locked,
+     * so it is unlocked, hidden and relocked, and items on locked layers are
+     * reached by unlocking the layer for the capture. A hidden target, a hidden
+     * group around it, or a hidden layer would make the capture come back empty,
+     * so those are shown for the capture. Everything is put back exactly as it
+     * was, and anything that still could not be hidden is reported rather than
+     * claimed as isolated.
      */
     captureItem: function (args) {
         var doc = __mcp_doc();
         var it = __mcp_item(args.uuid);
         var pad = __mcp_has(args.padding) ? Number(args.padding) : 8;
-        var bounds = __mcp_padBounds(it.visibleBounds, pad);
         var isolated = args.isolated !== false;
-        var hiddenNow = [], layersShown = [];
+        var hidden = [], relock = [], layersUnlocked = [], layersShown = [], shown = [], couldNotHide = [];
+
+        var allLayers = function (scope, out) {
+            for (var i = 0; i < scope.length; i++) { out.push(scope[i]); allLayers(scope[i].layers, out); }
+            return out;
+        };
 
         try {
+            // The target and its ancestors must be visible, or nothing renders.
+            var node = it;
+            while (node && node.typename !== "Document") {
+                if (node.typename === "Layer") {
+                    if (!node.visible) { node.visible = true; layersShown.push(node); }
+                } else if (node.hidden) {
+                    node.hidden = false; shown.push(node);
+                }
+                node = node.parent;
+            }
+
             if (isolated) {
+                var layers = allLayers(doc.layers, []);
+                for (var l = 0; l < layers.length; l++) {
+                    if (layers[l].locked) { layers[l].locked = false; layersUnlocked.push(layers[l]); }
+                }
                 var all = doc.pageItems;
                 for (var i = 0; i < all.length; i++) {
                     var p = all[i];
                     // Keep the target, its ancestors and its descendants.
                     if (__mcp_isWithin(it, p) || __mcp_isWithin(p, it)) { continue; }
-                    if (!p.hidden) {
-                        try { p.hidden = true; hiddenNow.push(p); } catch (e) { /* locked: leave it */ }
+                    if (p.hidden) { continue; }
+                    try {
+                        if (p.locked) { p.locked = false; relock.push(p); }
+                        p.hidden = true; hidden.push(p);
+                    } catch (e) {
+                        couldNotHide.push({ uuid: __mcp_safe(function () { return p.uuid; }), type: p.typename, reason: String(e.message || e) });
                     }
                 }
-                // An item on a hidden layer renders nothing even when isolated.
-                var l = it.layer;
-                while (l && l.typename === "Layer") {
-                    if (!l.visible) { l.visible = true; layersShown.push(l); }
-                    l = l.parent;
-                }
             }
+            var bounds = __mcp_padBounds(it.visibleBounds, pad);
             var out = __mcp_captureRect(doc, bounds, args.fileName, args.longEdge || 512);
-            out.uuid = it.uuid; out.type = it.typename; out.isolated = isolated;
-            out.hiddenForCapture = hiddenNow.length;
+            out.uuid = it.uuid; out.type = it.typename;
+            out.isolated = isolated && couldNotHide.length === 0;
+            out.hiddenForCapture = hidden.length;
+            if (couldNotHide.length) { out.couldNotHide = couldNotHide; }
+            if (shown.length || layersShown.length) { out.shownForCapture = shown.length + layersShown.length; }
             return out;
         } finally {
-            for (var j = 0; j < hiddenNow.length; j++) { try { hiddenNow[j].hidden = false; } catch (e) {} }
+            // Undo in reverse: unhide, relock items, relock layers, re-hide.
+            for (var j = 0; j < hidden.length; j++) { try { hidden[j].hidden = false; } catch (e) {} }
+            for (var r = 0; r < relock.length; r++) { try { relock[r].locked = true; } catch (e) {} }
+            for (var u = 0; u < layersUnlocked.length; u++) { try { layersUnlocked[u].locked = true; } catch (e) {} }
+            for (var h = 0; h < shown.length; h++) { try { shown[h].hidden = true; } catch (e) {} }
             for (var k = 0; k < layersShown.length; k++) { try { layersShown[k].visible = false; } catch (e) {} }
         }
     }

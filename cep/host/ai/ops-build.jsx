@@ -74,6 +74,29 @@ function __mcp_moveTopLeft(doc, abIndex, it, x, y) {
     it.translate(target[0] - gb[0], target[1] - gb[1]);
 }
 
+/*
+ * Check a whole point list before any path is touched. Points are applied one
+ * at a time, so a bad entry found partway through used to leave a half-written
+ * path behind.
+ */
+function __mcp_validatePoints(points, min) {
+    if (!(points instanceof Array) || points.length < min) {
+        throw { code: "bad_value", message: "points must be an array of at least " + min + " points" };
+    }
+    var xy = function (v) {
+        return v instanceof Array && v.length >= 2 && isFinite(Number(v[0])) && isFinite(Number(v[1])) &&
+               v[0] !== null && v[1] !== null;
+    };
+    for (var i = 0; i < points.length; i++) {
+        var p = points[i];
+        var good = xy(p) || (p && typeof p === "object" && !(p instanceof Array) && xy(p.anchor) &&
+                   (!__mcp_has(p.left) || xy(p.left)) && (!__mcp_has(p.right) || xy(p.right)));
+        if (!good) {
+            throw { code: "bad_value", message: "point " + i + " must be [x, y] or {anchor:[x,y], left?, right?}, got " + JSON.stringify(p) };
+        }
+    }
+}
+
 function __mcp_pathPoints(doc, abIndex, path, points) {
     var r = __mcp_abRect(doc, abIndex);
     var conv = function (p) { return [r[0] + Number(p[0]), r[1] - Number(p[1])]; };
@@ -107,28 +130,18 @@ function __mcp_created(doc, abIndex, it) {
  * exportFile(ExportType.SVG) re-points the open document at the .svg and marks
  * it saved - so a later "save" writes somewhere the user never chose, and the
  * unsaved-changes guard on close is silently disarmed. exportForScreens leaves
- * the document alone, but names its output itself (prefix + artboard name), so
- * it writes into a private folder and the file is moved to the requested path.
+ * the document alone. It names its output itself (prefix + artboard name), so
+ * exportFile below renders it into a private folder and moves it into place.
  */
-function __mcp_exportSvg(doc, abIndex, file, args) {
-    var tmp = new Folder(__mcp_captureDir().fsName + "/export-" + new Date().getTime());
-    tmp.create();
-    try {
-        var o = new ExportForScreensOptionsWebOptimizedSVG();
-        o.coordinatePrecision = 3;
-        o.cssProperties = SVGCSSPropertyLocation.STYLEATTRIBUTES;
-        o.fontType = args.outlineText === true ? SVGFontType.OUTLINEFONT : SVGFontType.SVGFONT;
-        var what = new ExportForScreensItemToExport();
-        what.artboards = String(abIndex + 1);
-        what.document = false;
-        doc.exportForScreens(tmp, ExportForScreensType.SE_SVG, o, what, "mcp-");
-        var produced = __mcp_findFiles(tmp, /\.svg$/i);
-        if (!produced.length) { throw new Error("exportForScreens produced no SVG"); }
-        if (file.exists) { file.remove(); }
-        if (!produced[0].copy(file.fsName)) { throw new Error("Could not write " + file.fsName); }
-    } finally {
-        __mcp_removeTree(tmp);
-    }
+function __mcp_exportSvgInto(doc, abIndex, folder, args) {
+    var o = new ExportForScreensOptionsWebOptimizedSVG();
+    o.coordinatePrecision = 3;
+    o.cssProperties = SVGCSSPropertyLocation.STYLEATTRIBUTES;
+    o.fontType = args.outlineText === true ? SVGFontType.OUTLINEFONT : SVGFontType.SVGFONT;
+    var what = new ExportForScreensItemToExport();
+    what.artboards = String(abIndex + 1);
+    what.document = false;
+    doc.exportForScreens(folder, ExportForScreensType.SE_SVG, o, what, "mcp-");
 }
 
 function __mcp_findFiles(folder, re) {
@@ -258,6 +271,15 @@ var __mcp_buildOps = {
         }
 
         if (cmd === "close") {
+            // name pins the document. Without it, close acts on whatever is
+            // active - and the user can click into their own file at any time.
+            if (__mcp_has(args.name)) {
+                doc = null;
+                for (var ci = 0; ci < app.documents.length; ci++) {
+                    if (app.documents[ci].name === String(args.name)) { doc = app.documents[ci]; break; }
+                }
+                if (!doc) { throw new Error("No open document named '" + args.name + "' - nothing was closed"); }
+            }
             // Never SAVECHANGES: with alerts suppressed, a "save changes?"
             // prompt is answered for the user, and an agent must not be the one
             // who decided to overwrite their file.
@@ -346,65 +368,66 @@ var __mcp_buildOps = {
 
         if (kind === "image") { return __mcp_placeImage(doc, abIndex, parent, args); }
 
-        if (kind === "rect" || kind === "ellipse") {
-            need(["x", "y", "width", "height"]);
-            tl = __mcp_toDoc(doc, abIndex, args.x, args.y);
-            if (kind === "ellipse") {
-                it = parent.pathItems.ellipse(tl[1], tl[0], Number(args.width), Number(args.height));
-            } else if (Number(args.cornerRadius) > 0) {
-                var cr = Number(args.cornerRadius);
-                it = parent.pathItems.roundedRectangle(tl[1], tl[0], Number(args.width), Number(args.height), cr, cr);
-            } else {
-                it = parent.pathItems.rectangle(tl[1], tl[0], Number(args.width), Number(args.height));
-            }
-        } else if (kind === "polygon" || kind === "star") {
-            need(["centerX", "centerY", "radius"]);
-            var c = __mcp_toDoc(doc, abIndex, args.centerX, args.centerY);
-            if (kind === "polygon") {
-                it = parent.pathItems.polygon(c[0], c[1], Number(args.radius), Number(args.sides || 6));
-            } else {
-                it = parent.pathItems.star(c[0], c[1], Number(args.radius),
-                                           Number(__mcp_has(args.innerRadius) ? args.innerRadius : args.radius / 2),
-                                           Number(args.points || 5));
-            }
-        } else if (kind === "line" || kind === "path") {
-            need(["points"]);
-            var pts = args.points;
-            if (!(pts instanceof Array) || pts.length < 2) { throw new Error(kind + " needs at least 2 points"); }
-            it = parent.pathItems.add();
-            __mcp_pathPoints(doc, abIndex, it, pts);
-            it.closed = kind === "line" ? false : (args.closed !== false);
-            // An open path with a fill paints a phantom closing edge; a line
-            // wants a stroke, not a fill.
-            if (!it.closed && !__mcp_has(args.fill)) { args.fill = "none"; }
-            if (kind === "line" && !__mcp_has(args.stroke)) { args.stroke = "#000000"; }
-        } else if (kind === "text" || kind === "areaText") {
-            need(["x", "y"]);
-            if (!__mcp_has(args.contents)) { throw new Error(kind + " needs contents"); }
-            tl = __mcp_toDoc(doc, abIndex, args.x, args.y);
-            if (kind === "areaText") {
-                need(["width", "height"]);
-                var frame = parent.pathItems.rectangle(tl[1], tl[0], Number(args.width), Number(args.height));
-                it = parent.textFrames.areaText(frame);
-            } else {
-                it = parent.textFrames.pointText(tl);
-            }
-            it.contents = String(args.contents);
-        } else {
-            throw new Error("Unknown kind '" + kind + "'. Known: rect, ellipse, polygon, star, line, path, text, areaText, image");
-        }
-
-        if (args.name) { it.name = String(args.name); }
-        var style = {};
-        var keys = ["fill", "stroke", "strokeWidth", "strokeDashes", "strokeCap", "strokeJoin", "opacity", "blendMode",
-                    "font", "size", "justification", "tracking", "leading"];
-        for (var k = 0; k < keys.length; k++) { if (__mcp_has(args[keys[k]])) { style[keys[k]] = args[keys[k]]; } }
-        if (!__mcp_has(style.fill)) { style.fill = __MCP_DEFAULT_FILL; }
-        if (!__mcp_has(style.stroke) && it.typename !== "TextFrame") { style.stroke = "none"; }
-        // A create that fails must leave nothing behind. The item exists before
-        // it is styled, so a bad font or colour used to strand an unstyled
-        // orphan in the user's document.
+        // A create that fails must leave nothing behind, so the try opens before
+        // the first item exists and covers points, contents and styling - a
+        // malformed point or bad font used to strand an empty or unstyled item.
+        var frame = null;
         try {
+            if (kind === "rect" || kind === "ellipse") {
+                need(["x", "y", "width", "height"]);
+                tl = __mcp_toDoc(doc, abIndex, args.x, args.y);
+                if (kind === "ellipse") {
+                    it = parent.pathItems.ellipse(tl[1], tl[0], Number(args.width), Number(args.height));
+                } else if (Number(args.cornerRadius) > 0) {
+                    var cr = Number(args.cornerRadius);
+                    it = parent.pathItems.roundedRectangle(tl[1], tl[0], Number(args.width), Number(args.height), cr, cr);
+                } else {
+                    it = parent.pathItems.rectangle(tl[1], tl[0], Number(args.width), Number(args.height));
+                }
+            } else if (kind === "polygon" || kind === "star") {
+                need(["centerX", "centerY", "radius"]);
+                var c = __mcp_toDoc(doc, abIndex, args.centerX, args.centerY);
+                if (kind === "polygon") {
+                    it = parent.pathItems.polygon(c[0], c[1], Number(args.radius), Number(args.sides || 6));
+                } else {
+                    it = parent.pathItems.star(c[0], c[1], Number(args.radius),
+                                               Number(__mcp_has(args.innerRadius) ? args.innerRadius : args.radius / 2),
+                                               Number(args.points || 5));
+                }
+            } else if (kind === "line" || kind === "path") {
+                need(["points"]);
+                var pts = args.points;
+                __mcp_validatePoints(pts, 2);
+                it = parent.pathItems.add();
+                __mcp_pathPoints(doc, abIndex, it, pts);
+                it.closed = kind === "line" ? false : (args.closed !== false);
+                // An open path with a fill paints a phantom closing edge; a line
+                // wants a stroke, not a fill.
+                if (!it.closed && !__mcp_has(args.fill)) { args.fill = "none"; }
+                if (kind === "line" && !__mcp_has(args.stroke)) { args.stroke = "#000000"; }
+            } else if (kind === "text" || kind === "areaText") {
+                need(["x", "y"]);
+                if (!__mcp_has(args.contents)) { throw new Error(kind + " needs contents"); }
+                tl = __mcp_toDoc(doc, abIndex, args.x, args.y);
+                if (kind === "areaText") {
+                    need(["width", "height"]);
+                    frame = parent.pathItems.rectangle(tl[1], tl[0], Number(args.width), Number(args.height));
+                    it = parent.textFrames.areaText(frame);
+                } else {
+                    it = parent.textFrames.pointText(tl);
+                }
+                it.contents = String(args.contents);
+            } else {
+                throw new Error("Unknown kind '" + kind + "'. Known: rect, ellipse, polygon, star, line, path, text, areaText, image");
+            }
+
+            if (args.name) { it.name = String(args.name); }
+            var style = {};
+            var keys = ["fill", "stroke", "strokeWidth", "strokeDashes", "strokeCap", "strokeJoin", "opacity", "blendMode",
+                        "font", "size", "justification", "tracking", "leading"];
+            for (var k = 0; k < keys.length; k++) { if (__mcp_has(args[keys[k]])) { style[keys[k]] = args[keys[k]]; } }
+            if (!__mcp_has(style.fill)) { style.fill = __MCP_DEFAULT_FILL; }
+            if (!__mcp_has(style.stroke) && it.typename !== "TextFrame") { style.stroke = "none"; }
             __mcp_applyStyle(doc, it, style);
             // Point text grows from its baseline, so its box is only known once
             // the font and size are set. Re-seat it so x,y is the top-left like
@@ -412,8 +435,10 @@ var __mcp_buildOps = {
             if (kind === "text") { __mcp_moveTopLeft(doc, abIndex, it, args.x, args.y); }
         } catch (e) {
             // An area text's frame path is consumed into the text frame, so
-            // removing the frame removes both.
-            try { it.remove(); } catch (x) {}
+            // removing the text removes both; the frame alone is removed when
+            // areaText() itself failed.
+            if (it) { try { it.remove(); } catch (x) {} }
+            else if (frame) { try { frame.remove(); } catch (x) {} }
             throw e;
         }
 
@@ -428,10 +453,13 @@ var __mcp_buildOps = {
     exportFile: function (args) {
         var doc = __mcp_doc();
         var file = new File(__mcp_requireAbsolute(args.path, "path"));
-        var ext = __mcp_extOf(file.fsName);
-        var format = String(args.format || ext).toLowerCase();
-        if (format === "jpeg") { format = "jpg"; }
-        if (ext !== format) { throw new Error("path extension ." + ext + " does not match format " + format); }
+        var norm = function (f) { f = String(f).toLowerCase(); return f === "jpeg" ? "jpg" : f; };
+        var ext = norm(__mcp_extOf(file.fsName));
+        var format = norm(args.format || ext);
+        if (ext !== format) { throw new Error("path extension ." + __mcp_extOf(file.fsName) + " does not match format " + format); }
+        if (format !== "png" && format !== "jpg" && format !== "svg") {
+            throw new Error("Unknown format " + format + ". Known: png, jpg, svg. PDF is not offered: scripting can only saveAs a PDF, which re-points the open document at it.");
+        }
         if (file.exists && args.overwrite !== true) { throw new Error(file.fsName + " exists - pass overwrite:true to replace it"); }
         __mcp_ensureParent(file);
 
@@ -440,8 +468,22 @@ var __mcp_buildOps = {
         var scale = Number(args.scale || 100);
         var t0 = new Date().getTime();
 
+        /*
+         * Every format renders into a private folder and is then moved to the
+         * exact path asked for. Illustrator does not write the name it is given
+         * - measured: PNG export turned "Campaign Tech Award 2026.png" into
+         * "Campaign-Tech-Award-2026.png" - so exporting in place made the
+         * overwrite check look at the wrong name, and finding "what landed" by
+         * pattern could pick up a neighbour such as logo-old.png. A fresh folder
+         * holds exactly one output, and the destination is always the name the
+         * caller chose.
+         */
+        var tmp = new Folder(__mcp_captureDir().fsName + "/export-" + t0 + "-" + Math.floor(Math.random() * 1e6));
+        tmp.create();
         try {
-            if (format === "png" || format === "jpg") {
+            if (format === "svg") {
+                __mcp_exportSvgInto(doc, abIndex, tmp, args);
+            } else {
                 // exportFile renders the ACTIVE artboard; switch, then restore.
                 doc.artboards.setActiveArtboardIndex(abIndex);
                 var o;
@@ -456,33 +498,28 @@ var __mcp_buildOps = {
                 o.antiAliasing = true;
                 o.horizontalScale = scale;
                 o.verticalScale = scale;
-                doc.exportFile(file, format === "png" ? ExportType.PNG24 : ExportType.JPEG, o);
-            } else if (format === "svg") {
-                __mcp_exportSvg(doc, abIndex, file, args);
-            } else {
-                throw new Error("Unknown format " + format + ". Known: png, jpg, svg. PDF is not offered: scripting can only saveAs a PDF, which re-points the open document at it.");
+                doc.exportFile(new File(tmp.fsName + "/mcp-export." + format), format === "png" ? ExportType.PNG24 : ExportType.JPEG, o);
             }
+            var produced = __mcp_findFiles(tmp, format === "svg" ? /\.svg$/i : (format === "png" ? /\.png$/i : /\.jpe?g$/i));
+            if (produced.length !== 1) {
+                throw new Error("Illustrator reported no error but produced " + produced.length + " " + format + " files");
+            }
+            // Re-check: the destination may have appeared while Illustrator rendered.
+            if (file.exists) {
+                if (args.overwrite !== true) { throw new Error(file.fsName + " exists - pass overwrite:true to replace it"); }
+                if (!file.remove()) { throw new Error("Could not replace " + file.fsName); }
+            }
+            if (!produced[0].copy(file.fsName)) { throw new Error("Could not write " + file.fsName); }
         } finally {
             try { doc.artboards.setActiveArtboardIndex(priorActive); } catch (x) {}
+            __mcp_removeTree(tmp);
         }
 
-        // Illustrator does not always write the name it was given - measured:
-        // PNG export turned "Campaign Tech Award 2026.png" into
-        // "Campaign-Tech-Award-2026.png" - so report what actually landed. File.name
-        // is URI-encoded ("%20"), so it is decoded before building the pattern.
-        var written = file.exists ? file : null;
-        if (!written) {
-            var stem = decodeURI(file.name).replace(/\.[^.]+$/, "");
-            var tries = [stem, stem.replace(/ /g, "-")];
-            for (var ti = 0; ti < tries.length && !written; ti++) {
-                var siblings = file.parent.getFiles(tries[ti] + "*." + format);
-                if (siblings.length) { written = siblings[0]; }
-            }
-        }
-        if (!written) { throw new Error("Illustrator reported no error but no file appeared at " + file.fsName); }
+        var written = new File(file.fsName);
+        if (!written.exists) { throw new Error("No file appeared at " + file.fsName); }
         return {
-            path: written ? written.fsName : null, requested: file.fsName, format: format,
-            artboard: abIndex, bytes: written ? written.length : 0, ms: new Date().getTime() - t0
+            path: written.fsName, format: format, artboard: abIndex,
+            bytes: written.length, ms: new Date().getTime() - t0
         };
     }
 };

@@ -119,7 +119,8 @@ const TOOLS = [
       '- save: in place for a document that has a file; an untitled one needs path (absolute, .ai). Never ' +
       'overwrites an existing file without overwrite:true.\n' +
       '- close: refuses a document with unsaved changes unless discardUnsaved:true. It never saves on ' +
-      'close.\n' +
+      'close. Pass name to close exactly that document - without it, close acts on whichever is active, and ' +
+      'the user may have clicked into their own file.\n' +
       '- addArtboard / setArtboard / removeArtboard: artboard x,y are relative to artboard 0\'s top-left, ' +
       'y down. addArtboard without x places it 40pt right of the rightmost artboard. Artboard 0 cannot be ' +
       'moved or removed, because it is the origin the others are measured from. setArtboard active:true ' +
@@ -129,7 +130,7 @@ const TOOLS = [
       properties: {
         command: { type: 'string', enum: ['new', 'open', 'save', 'close', 'activate', 'addArtboard', 'setArtboard', 'removeArtboard'] },
         path: { type: 'string', description: 'open/save: absolute path.' },
-        name: { type: 'string', description: 'activate: document name. add/setArtboard: artboard name.' },
+        name: { type: 'string', description: 'activate/close: document name. add/setArtboard: artboard name.' },
         width: { type: 'number' },
         height: { type: 'number' },
         colorSpace: { type: 'string', enum: ['RGB', 'CMYK'] },
@@ -274,8 +275,8 @@ const TOOLS = [
       'Layers, addressed by name path (["Layer 1"], or ["Parent", "Child"] for a sublayer). Two layers with ' +
       'the same name at the same level are an error rather than a guess - rename one.\n\n' +
       'create (parent for a sublayer), rename, setVisible, setLocked, setActive (where ai_create puts new ' +
-      'items by default), arrange, delete. delete refuses a layer that still holds artwork unless ' +
-      'deleteContents:true.',
+      'items by default), arrange, delete. delete refuses a layer that still holds artwork - its sublayers included - ' +
+      'unless deleteContents:true.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -337,8 +338,10 @@ const TOOLS = [
       'default 320.\n' +
       '- region: x, y, width, height in artboard space - for looking closely at one part.\n' +
       '- item: one item cropped to its visible bounds plus padding. isolated (default true) hides everything ' +
-      'else for the capture, which separates "drawn but covered by something" from "not drawn at all". ' +
-      'Hidden states are restored exactly.\n\n' +
+      'else for the capture, which separates "drawn but covered by something" from "not drawn at all". Locked ' +
+      'art is unlocked, hidden and relocked; a hidden target or group around it is shown for the shot. Anything ' +
+      'that still could not be hidden is listed in couldNotHide, and isolated is then false. Every state is ' +
+      'restored exactly.\n\n' +
       'Captures render on mid grey by default, so transparent areas are not mistaken for a white fill. ' +
       'background:"white" shows it as the artboard looks on screen.',
     inputSchema: {
@@ -364,8 +367,8 @@ const TOOLS = [
     description:
       'Write a deliverable file from one artboard: png, jpg or svg, chosen by the path\'s extension. ' +
       'ai_capture is for looking; this is for output.\n\n' +
-      'path must be absolute; missing folders are created; an existing file is never replaced without ' +
-      'overwrite:true. scale is a percentage for png/jpg (200 = 2x). png is transparent unless ' +
+      'path must be absolute and is exactly the file you get (Illustrator renames exports itself; this does ' +
+      'not); missing folders are created; an existing file is never replaced without overwrite:true. scale is a percentage for png/jpg (200 = 2x). png is transparent unless ' +
       'transparent:false. svg references fonts by name unless outlineText:true.\n\n' +
       'The open document is left pointing at its own file. Illustrator\'s plain SVG export re-points the ' +
       'document at the .svg and marks it saved, so SVG goes through Export for Screens instead. PDF is not ' +
@@ -403,6 +406,20 @@ const TOOLS = [
   },
 ];
 
+/*
+ * Every tool takes an optional document name. Uuids are per-document integers,
+ * so a write aimed at one document can land on an unrelated item in another
+ * if the user switched in between; passing the name makes that an error.
+ */
+for (const t of TOOLS) {
+  t.inputSchema.properties.document = {
+    type: 'string',
+    description: 'Optional: the document name from sessionInfo. The call is refused if a different document is ' +
+      'active - uuids are per document, so this stops a write landing in the wrong file. Every result reports ' +
+      'the document it ran in.',
+  };
+}
+
 const BACKGROUNDS = { grey: '#4a4a4a', white: '#ffffff' };
 
 /**
@@ -432,7 +449,7 @@ function createToolRegistry(callHost) {
     const stamp = Date.now();
 
     if (command === 'artboards') {
-      const session = await host('sessionInfo', {});
+      const session = await host('sessionInfo', { document: args.document });
       if (!session.active) throw new Error('No document is open');
       const all = session.active.artboards.map((a) => a.index);
       const wanted = Array.isArray(args.artboards) && args.artboards.length ? args.artboards : all;
@@ -440,7 +457,7 @@ function createToolRegistry(callHost) {
       const errors = [];
       for (const index of wanted) {
         try {
-          const s = await host('captureArtboard', { artboard: index, longEdge: args.longEdge || 320, fileName: `ab${stamp}_${index}.png` });
+          const s = await host('captureArtboard', { artboard: index, longEdge: args.longEdge || 320, fileName: `ab${stamp}_${index}.png`, document: args.document });
           shots.push({ path: s.path, label: `${index}  ${s.artboardName}`, meta: s });
         } catch (err) {
           errors.push({ artboard: index, message: String(err.message || err) });

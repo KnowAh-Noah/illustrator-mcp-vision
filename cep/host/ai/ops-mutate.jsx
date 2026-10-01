@@ -118,6 +118,7 @@ function __mcp_applyWrite(doc, it, w) {
 
     if (__mcp_has(w.points)) {
         if (it.typename !== "PathItem") { throw { code: "type_mismatch", message: "points applies to paths, not " + it.typename }; }
+        __mcp_validatePoints(w.points, 2);
         var abP = __mcp_has(w.artboard) ? Number(w.artboard) : __mcp_artboardOf(doc, it.geometricBounds);
         while (it.pathPoints.length > 1) { it.pathPoints[it.pathPoints.length - 1].remove(); }
         // A path cannot hold zero points, so the first one is rewritten in
@@ -125,7 +126,11 @@ function __mcp_applyWrite(doc, it, w) {
         var firstLeft = it.pathPoints[0];
         __mcp_pathPoints(doc, abP === null ? undefined : abP, it, w.points);
         firstLeft.remove();
-        if (__mcp_has(w.closed)) { it.closed = w.closed !== false; }
+    }
+    // closed on its own (no new points) opens or closes the existing path.
+    if (__mcp_has(w.closed)) {
+        if (it.typename !== "PathItem") { throw { code: "type_mismatch", message: "closed applies to paths, not " + it.typename }; }
+        it.closed = w.closed !== false;
     }
 
     var ab = __mcp_has(w.artboard) ? Number(w.artboard) : __mcp_artboardOf(doc, it.geometricBounds);
@@ -162,6 +167,13 @@ function __mcp_applyWrite(doc, it, w) {
 
     if (w.hidden === true) { it.hidden = true; }
     if (w.locked === true) { it.locked = true; }
+}
+
+/* Every page item on a layer and all of its sublayers. */
+function __mcp_deepItemCount(l) {
+    var n = l.pageItems.length;
+    for (var i = 0; i < l.layers.length; i++) { n += __mcp_deepItemCount(l.layers[i]); }
+    return n;
 }
 
 var __MCP_ARRANGE = {
@@ -220,6 +232,11 @@ var __mcp_mutateOps = {
         if (cmd === "group" || cmd === "clip") {
             list = __mcp_items(args.uuids);
             if (cmd === "clip" && list.length < 2) { throw new Error("clip needs the mask shape plus at least one item"); }
+            // Validate before anything moves: a bad mask found after grouping
+            // used to return an error with the artwork already regrouped.
+            if (cmd === "clip" && list[0].typename !== "PathItem" && list[0].typename !== "CompoundPathItem") {
+                throw new Error("The mask (first uuid) must be a path or compound path, not " + list[0].typename);
+            }
             // The group goes where the topmost of its members was.
             var top = list[0];
             for (i = 1; i < list.length; i++) { if (list[i].zOrderPosition > top.zOrderPosition) { top = list[i]; } }
@@ -233,9 +250,6 @@ var __mcp_mutateOps = {
                 // The clipping path is the group's TOPMOST path - so the first
                 // uuid given is moved to the top and becomes the mask.
                 var mask = list[0];
-                if (mask.typename !== "PathItem" && mask.typename !== "CompoundPathItem") {
-                    throw new Error("The mask (first uuid) must be a path or compound path, not " + mask.typename);
-                }
                 mask.move(g, ElementPlacement.PLACEATBEGINNING);
                 g.clipped = true;
             }
@@ -317,10 +331,14 @@ var __mcp_mutateOps = {
         }
         if (cmd === "delete") {
             if (layer.parent.typename === "Document" && doc.layers.length < 2) { throw new Error("A document needs at least one layer"); }
-            // Deleting a layer deletes its artwork. Refuse unless it is empty
-            // or the caller says so explicitly.
-            if (layer.pageItems.length && args.deleteContents !== true) {
-                throw new Error("Layer '" + layer.name + "' holds " + layer.pageItems.length + " items - pass deleteContents:true to delete them with it");
+            // Deleting a layer deletes its artwork, sublayers included.
+            // Layer.pageItems holds only what sits directly on the layer, so a
+            // layer that is nothing but sublayers full of art counted as empty.
+            var held = __mcp_deepItemCount(layer);
+            if (held && args.deleteContents !== true) {
+                throw new Error("Layer '" + layer.name + "' holds " + held + " items" +
+                    (layer.layers.length ? " across it and " + layer.layers.length + " sublayer(s)" : "") +
+                    " - pass deleteContents:true to delete them with it");
             }
             var path = __mcp_layerPath(layer);
             layer.remove();

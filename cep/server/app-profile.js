@@ -11,9 +11,10 @@
  * 8791, ~/.ae-mcp-vision/token, the ae-mcp-vision service name and the
  * ae-vision:// resources. Existing client configs keep working.
  *
- * The app comes from CEP's host environment. Outside CEP (unit tests, plain
- * Node) there is none, so MCP_HOST_APP picks one and After Effects is the
- * default - the suite that predates the other apps runs unchanged.
+ * Inside CEP the app comes from CEP's host environment and nothing else. Outside
+ * CEP (unit tests, plain Node) there is none, so MCP_HOST_APP picks one and
+ * After Effects is the default - the suite that predates the other apps runs
+ * unchanged.
  */
 
 const os = require('os');
@@ -29,7 +30,6 @@ const PROFILES = {
     portEnv: 'AE_MCP_PORT',
     tokenDir: path.join(os.homedir(), '.ae-mcp-vision'),
     tokenDirEnv: 'AE_MCP_TOKEN_DIR',
-    tempDirName: 'ae-mcp-vision',
     hostJsx: path.join('host', 'ae', 'host.jsx'),
     tools: './tools.js',
     instructions:
@@ -80,7 +80,6 @@ const PROFILES = {
     portEnv: 'ILLUSTRATOR_MCP_PORT',
     tokenDir: path.join(os.homedir(), '.illustrator-mcp-vision'),
     tokenDirEnv: 'ILLUSTRATOR_MCP_TOKEN_DIR',
-    tempDirName: 'illustrator-mcp-vision',
     hostJsx: path.join('host', 'ai', 'host.jsx'),
     tools: './tools-illustrator.js',
     instructions:
@@ -115,15 +114,21 @@ const PROFILES = {
 };
 
 function detectAppId() {
-  if (process.env.MCP_HOST_APP) return process.env.MCP_HOST_APP;
-  try {
-    const cep = typeof window !== 'undefined' && window.__adobe_cep__;
-    if (cep && typeof cep.getHostEnvironment === 'function') {
-      const env = JSON.parse(cep.getHostEnvironment());
-      if (env && env.appName) return env.appName;
+  const cep = typeof window !== 'undefined' && window.__adobe_cep__;
+  // Inside CEP the real host decides, always. An environment variable must not
+  // override it - a stray export or launchctl setenv would bring After Effects
+  // up with Illustrator's tools - and an unreadable host must fail loudly, not
+  // fall back to After Effects and take port 8791 inside Illustrator.
+  if (cep) {
+    let env = null;
+    try { env = JSON.parse(cep.getHostEnvironment()); } catch (e) { env = null; }
+    if (!env || !env.appName) {
+      throw new Error('CEP is present but did not report a host app; refusing to guess which app this is');
     }
-  } catch (e) { /* fall through to the default */ }
-  return 'AEFT';
+    return env.appName;
+  }
+  // Outside CEP (unit tests, plain Node): MCP_HOST_APP picks, default After Effects.
+  return process.env.MCP_HOST_APP || 'AEFT';
 }
 
 function currentProfile() {

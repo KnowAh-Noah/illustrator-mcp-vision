@@ -45,6 +45,29 @@ function __mcp_serialize(obj) {
     }
 }
 
+/*
+ * Uuids are small per-document integers, so one read in document A and then
+ * written after the user switched to B resolves to an unrelated item in B -
+ * and the write succeeds. A caller that passes `document` (the name from
+ * sessionInfo) is refused instead when another document is active, and every
+ * result says which document it ran in, so a mismatch is at least visible.
+ */
+function __mcp_wrongDocument(args) {
+    if (!args || args.document === undefined || args.document === null) { return null; }
+    if (!app.documents.length) { return "No document is open; expected '" + args.document + "'"; }
+    var active = app.activeDocument.name;
+    return active === String(args.document) ? null :
+        "The active document is '" + active + "', not '" + args.document + "' - nothing was changed. " +
+        "Switch with ai_document activate, or re-read uuids in this document.";
+}
+
+function __mcp_stampDocument(op, result) {
+    // document ops change which document is active, and say so themselves.
+    if (op === "document" || !result || typeof result !== "object" || result instanceof Array) { return; }
+    if (result.document !== undefined || !app.documents.length) { return; }
+    try { result.document = app.activeDocument.name; } catch (e) {}
+}
+
 function __mcp_err(code, message, line) {
     // An Error's String() is "Error: <message>"; the prefix is noise to a caller.
     var text = (message && message.message !== undefined) ? message.message : String(message);
@@ -74,11 +97,15 @@ function __mcp_exec(reqJson) {
 
         if (req) {
             var op = req.op;
+            var args = req.args || {};
             if (!__mcp_ops.hasOwnProperty(op)) {
                 out = __mcp_err("unknown_op", "No such op: " + op);
+            } else if (__mcp_wrongDocument(args)) {
+                out = __mcp_err("wrong_document", __mcp_wrongDocument(args));
             } else {
                 try {
-                    out = { ok: true, result: __mcp_ops[op](req.args || {}) };
+                    out = { ok: true, result: __mcp_ops[op](args) };
+                    __mcp_stampDocument(op, out.result);
                 } catch (e) {
                     out = __mcp_err("op_failed", e, __mcp_line(e));
                 }

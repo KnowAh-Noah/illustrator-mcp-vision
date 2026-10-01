@@ -31,6 +31,12 @@ if /usr/bin/pgrep -x "After Effects" >/dev/null 2>&1; then
   exit 1
 fi
 
+# The same extension also loads into Illustrator, so it has to be closed too.
+if /usr/bin/pgrep -x "Adobe Illustrator" >/dev/null 2>&1; then
+  /usr/bin/osascript -e 'display dialog "Please quit Illustrator first, then run this installer again.\n\nIllustrator loads extensions when it starts, so it needs to be closed during installation." buttons {"OK"} default button 1 with title "AE MCP Vision" with icon caution' >/dev/null 2>&1
+  exit 1
+fi
+
 mkdir -p "$DEST_DIR" || fail "Could not create:\n$DEST_DIR"
 
 # Replace a previous install, but never blindly delete something unexpected.

@@ -124,7 +124,10 @@ off; pass `bounds: "visible"` to include strokes.
 - Captures render on mid grey by default, so "nothing drawn" is not mistaken
   for "white fill". Pass `background: "white"` to see it as it looks on screen.
 - `item` with `isolated` (default) hides everything else for the shot and
-  restores it. It answers "is this drawn at all, or just covered".
+  restores it. It answers "is this drawn at all, or just covered". Locked art
+  (usually the background) is unlocked, hidden and relocked; a hidden target or
+  hidden group around it is shown for the shot. Anything that still could not be
+  hidden comes back in `couldNotHide`, and then `isolated` is `false`.
 - `artboards` puts every artboard on one sheet - the cheapest way to review a
   set of ad sizes together.
 
@@ -139,9 +142,11 @@ off; pass `bounds: "visible"` to include strokes.
   through Export for Screens instead, which leaves the document alone.
 - **No PDF**, for the same reason: scripting can only produce a PDF with
   `saveAs`, which re-points the document.
-- **The file name you ask for is not always the one written.** PNG export
-  turned `Campaign Tech Award 2026.png` into `Campaign-Tech-Award-2026.png`.
-  Use the `path` the response returns, not the one you sent.
+- **You get exactly the file name you asked for.** Illustrator itself does not
+  write the name it is given - PNG export turned `Campaign Tech Award 2026.png`
+  into `Campaign-Tech-Award-2026.png` - so every format renders into a private
+  folder and is moved to your path. The overwrite guard is checked against that
+  path, and nearby files such as `logo-old.png` are never touched or reported.
 - Exporting switches the active artboard, which Illustrator counts as a change,
   so the document reads as unsaved afterwards even though no artwork changed.
 - SVG references fonts by name; `outlineText: true` converts text to outlines in
@@ -149,12 +154,18 @@ off; pass `bounds: "visible"` to include strokes.
 
 ## Safety rails
 
+- **Uuids belong to one document.** They are small integers, so a uuid read in
+  one document can name an unrelated item in another. Pass `document` (the name
+  from `sessionInfo`) on any call and it is refused if a different document is
+  active; every result reports the document it ran in.
+- `ai_document close` takes `name` to close exactly that document - without it,
+  close acts on whichever is active.
 - `ai_document close` refuses unsaved changes without `discardUnsaved: true`,
   and never saves on close.
 - `ai_document save` without a path only works for a document that already has
   a file, and never overwrites without `overwrite: true`.
-- `ai_layers delete` refuses a layer holding artwork without
-  `deleteContents: true`.
+- `ai_layers delete` refuses a layer holding artwork - counting its
+  sublayers - without `deleteContents: true`.
 - A locked item refuses changes unless the same write sets `locked: false`.
 - Creating into a locked or hidden layer fails with the layer's name.
 

@@ -26,8 +26,11 @@ test('no host code ever closes a document with SAVECHANGES', () => {
 
 test('close refuses unsaved changes unless discardUnsaved is passed', () => {
   const src = code('cep/host/ai/ops-build.jsx');
-  const close = src.slice(src.indexOf('cmd === "close"'));
-  assert.match(close.slice(0, 400), /!doc\.saved && args\.discardUnsaved !== true/);
+  // The whole close branch, up to the next command.
+  const start = src.indexOf('cmd === "close"');
+  const close = src.slice(start, src.indexOf('if (cmd ===', start + 1));
+  assert.match(close, /!doc\.saved && args\.discardUnsaved !== true/);
+  assert.match(close, /No open document named/, 'a named close must refuse rather than close the active document');
 });
 
 test('save and export never overwrite without overwrite:true', () => {
@@ -58,7 +61,10 @@ test('a failed create removes the item it made', () => {
 });
 
 test('deleting a layer with artwork needs deleteContents:true', () => {
-  assert.match(code('cep/host/ai/ops-mutate.jsx'), /layer\.pageItems\.length && args\.deleteContents !== true/);
+  const src = code('cep/host/ai/ops-mutate.jsx');
+  assert.match(src, /var held = __mcp_deepItemCount\(layer\);\s*if \(held && args\.deleteContents !== true\)/,
+    'the guard must count sublayers - Layer.pageItems alone misses them');
+  assert.match(src, /n \+= __mcp_deepItemCount\(l\.layers\[i\]\)/, 'the count must recurse');
 });
 
 test('capture writes only bare filenames inside the app-owned folder', () => {
@@ -68,8 +74,12 @@ test('capture writes only bare filenames inside the app-owned folder', () => {
   assert.match(fn.slice(0, 600), /__mcp_captureDir\(\)/);
 });
 
-test('isolated capture restores every hidden flag it changed', () => {
+test('isolated capture restores every hidden, locked and visible flag it changed', () => {
   const src = code('cep/host/ai/ops-capture.jsx');
-  assert.match(src, /finally \{[\s\S]*hiddenNow\[j\]\.hidden = false/);
-  assert.match(src, /finally \{[\s\S]*layersShown\[k\]\.visible = false/);
+  const fin = src.slice(src.lastIndexOf('} finally {'));
+  for (const restore of [/hidden\[j\]\.hidden = false/, /relock\[r\]\.locked = true/,
+    /layersUnlocked\[u\]\.locked = true/, /shown\[h\]\.hidden = true/, /layersShown\[k\]\.visible = false/]) {
+    assert.match(fin, restore);
+  }
+  assert.match(src, /out\.isolated = isolated && couldNotHide\.length === 0/, 'isolated must not be claimed when something stayed visible');
 });

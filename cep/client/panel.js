@@ -137,7 +137,16 @@ async function probeHealth(port) {
     const res = await fetch(`http://127.0.0.1:${port}/health`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
-    return res.ok ? await res.json() : null;
+    if (!res.ok) return null;
+    const body = await res.json();
+    // A server on this port that belongs to another app is not ours. Without
+    // this, an Illustrator panel whose profile came up wrong would show After
+    // Effects' server as connected.
+    if (body && body.service && body.service !== PROFILE.service) {
+      log(`port ${port} is held by ${body.service}, not ${PROFILE.service}`, true);
+      return null;
+    }
+    return body;
   } catch (err) {
     return null;
   }

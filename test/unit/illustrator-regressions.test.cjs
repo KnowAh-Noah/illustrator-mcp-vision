@@ -47,14 +47,17 @@ test('ai_create can place an image, embedded by default', () => {
   assert.match(place, /catch \(e\) \{[\s\S]*it\.remove\(\)/, 'a failed place must not strand an item');
 });
 
-test('export reports the file Illustrator actually wrote, and fails when there is none', () => {
+test('export renders privately and moves to exactly the path asked for', () => {
   // PNG export writes "Campaign-Tech-Award-2026.png" for "Campaign Tech Award
-  // 2026.png", and File.name is URI-encoded, so the lookup used to miss and
-  // report path:null for a file that existed.
+  // 2026.png". Exporting in place made the overwrite check look at the wrong
+  // name, and finding the output by pattern could report a neighbour such as
+  // logo-old.png (PR #10 review). A private folder holds exactly one output.
   const exp = fnBody(code('cep/host/ai/ops-build.jsx'), 'exportFile: function');
-  assert.match(exp, /decodeURI\(file\.name\)/);
-  assert.match(exp, /replace\(\/ \/g, "-"\)/);
-  assert.match(exp, /if \(!written\) \{ throw new Error/, 'no file must be an error, not an empty success');
+  assert.match(exp, /new Folder\(__mcp_captureDir\(\)\.fsName \+ "\/export-"/);
+  assert.match(exp, /produced\.length !== 1/, 'exactly one output, or an error');
+  assert.match(exp, /if \(file\.exists\) \{\s*if \(args\.overwrite !== true\)/, 'the destination is re-checked before the move');
+  assert.match(exp, /__mcp_removeTree\(tmp\)/);
+  assert.doesNotMatch(exp, /getFiles\(/, 'no pattern search next to the destination');
 });
 
 test('artboards outside the canvas get a readable error, not "CoOA"', () => {

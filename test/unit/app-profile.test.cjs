@@ -86,7 +86,7 @@ test('the manifest gives each host its own ExtendScript entry point', () => {
     const blocks = [...xml.matchAll(new RegExp(`<DispatchInfo Host="${p.id}">([\\s\\S]*?)</DispatchInfo>`, 'g'))];
     assert.strictEqual(blocks.length, 2, `${p.id} needs a server and a panel DispatchInfo`);
     for (const b of blocks) {
-      assert.match(b[1], new RegExp(`<ScriptPath>\\./${p.hostJsx.replace(/\\\\/g, '/').replace(/\./g, '\\.')}</ScriptPath>`));
+      assert.match(b[1], new RegExp(`<ScriptPath>\\./${p.hostJsx.replace(/\\/g, '/').replace(/\./g, '\\.')}</ScriptPath>`));
     }
     assert.match(xml, new RegExp(`<Host Name="${p.id}" Version=`), `${p.id} missing from HostList`);
   }
