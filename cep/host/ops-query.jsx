@@ -26,6 +26,9 @@ function __mcp_layerSummary(l) {
     } catch (e) { s.type = "Layer"; }
     try { s.parentId = l.parent ? l.parent.id : null; } catch (e) { s.parentId = null; }
     try { s.hasVideo = l.hasVideo; } catch (e) {}
+    try { if (l.hasAudio) { s.hasAudio = true; s.audioEnabled = l.audioEnabled; } } catch (e) {}
+    // Handoff notes set by ae_layers organise; omitted when empty to keep trees small.
+    try { if (l.comment) { s.comment = l.comment; } } catch (e) {}
     return s;
 }
 
@@ -44,6 +47,15 @@ function __mcp_itemSummary(it) {
         s.type = (it.mainSource instanceof SolidSource) ? "Solid" : "Footage";
         try { s.footageMissing = it.footageMissing; } catch (e) {}
         try { s.file = it.file ? it.file.fsName : null; } catch (e) {}
+        // What a caller needs before building on footage: its size, timing and whether it has sound.
+        try { s.width = it.width; s.height = it.height; } catch (e) {}
+        try { s.hasVideo = it.hasVideo; s.hasAudio = it.hasAudio; } catch (e) {}
+        try {
+            if (it.mainSource && !it.mainSource.isStill) {
+                s.duration = it.duration; s.frameRate = it.frameRate;
+                s.frames = Math.round(it.duration * it.frameRate);
+            } else if (it.mainSource) { s.still = true; }
+        } catch (e) {}
     }
     return s;
 }
@@ -85,6 +97,8 @@ function __mcp_walkProps(group, pathSoFar, depth, maxDepth, out, includeValues) 
 
         if (includeValues && __mcp_propTypeName(p) === "PROPERTY") {
             entry.value = __mcp_readValue(p);
+            var lbl = __mcp_valueLabel(p);
+            if (lbl !== null) { entry.label = lbl; }
         }
 
         out.push(entry);
@@ -173,11 +187,23 @@ var __mcp_queryOps = {
         for (var i = 0; i < paths.length; i++) {
             try {
                 var p = __mcp_propByPath(layer, paths[i]);
+                if (__mcp_propTypeName(p) !== "PROPERTY") {
+                    errors.push({ path: paths[i], code: "not_a_property",
+                                  message: "Path resolves to a group (" + p.matchName + "), not a readable property - use propertyKeys with this path to list what is inside" });
+                    continue;
+                }
                 var rec = {
                     path: paths[i],
                     value: __mcp_readValue(p, evalTime),
                     valueType: __mcp_valueTypeName(p)
                 };
+                // valueText is the CURRENT value's text, so only label a read at the playhead.
+                if (!hasTime || Math.abs(evalTime - layer.containingComp.time) < 1e-6) {
+                    var lb = __mcp_valueLabel(p);
+                    if (lb !== null) { rec.label = lb; }
+                }
+                var ropts = __mcp_enumOptions(p);
+                if (ropts) { rec.options = ropts; }
                 try { if (p.numKeys) { rec.numKeys = p.numKeys; } } catch (e) {}
                 try { if (p.expression) { rec.expression = p.expression; } } catch (e) {}
                 values.push(rec);

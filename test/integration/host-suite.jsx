@@ -386,6 +386,44 @@
             return { frames: got.join(","), rerunCleared: again.clearedPathKeys, afterDrop: shape.numKeys };
         });
 
+        record("setPathKeys timeBase:layer maps clip time through startTime and stretch", function () {
+            var id = call("layers", { compId: scratchCompId, command: "createSolid", color: [1,1,1], name: "shifted", width: 100, height: 100 }).id;
+            var L = __mcp_layerById(id);
+            L.startTime = 2; L.stretch = 200;
+            call("masks", { layerId: id, command: "add" });
+            var sq = [[10,10],[90,10],[90,90],[10,90]];
+            var r = call("masks", { layerId: id, command: "setPathKeys", timeBase: "layer", timeOffset: 0.5, hold: true,
+                                    keys: [{ time: 0, vertices: sq }, { time: 1, vertices: sq }] });
+            var shape = L.property("ADBE Mask Parade").property(1).property("ADBE Mask Shape");
+            // clip 0 -> 2 + 0*2 + 0.5 = 2.5; clip 1 -> 2 + 1*2 + 0.5 = 4.5
+            if (Math.abs(shape.keyTime(1) - 2.5) > 1e-6 || Math.abs(shape.keyTime(2) - 4.5) > 1e-6) {
+                throw new Error("keys at " + shape.keyTime(1) + ", " + shape.keyTime(2) + " - wanted 2.5, 4.5");
+            }
+            var times = [shape.keyTime(1), shape.keyTime(2)];
+            L.stretch = 100;   // keys move with the stretch, so read them first
+            return { keyTimes: times, reported: r.compTimeRange };
+        });
+
+        /*
+         * Effect popup parameters: a guessed integer can silently pick the wrong
+         * mode, so reads carry the label and writes accept it.
+         */
+        record("popup params read as {value, label, options} and take a label on write", function () {
+            var id = call("layers", { compId: scratchCompId, command: "createSolid", color: [1,1,1], name: "popup", width: 100, height: 100 }).id;
+            call("effects", { layerId: id, command: "apply", matchName: "ADBE Stroke" });
+            var path = ["ADBE Effect Parade", "ADBE Stroke", "ADBE Stroke-0007"];
+            var w = call("set", { writes: [{ layerId: id, path: path, value: "on transparent" },
+                                           { layerId: id, path: path, value: "Sideways" }] });
+            if (w.appliedCount !== 1 || w.errors.length !== 1 || w.errors[0].message.indexOf("Reveal Original Image") === -1) {
+                throw new Error("label write or bad-label error wrong: " + w.errors.length + " errors");
+            }
+            var r = call("propertyValues", { layerId: id, paths: [path] }).values[0];
+            if (r.value !== 2 || r.label !== "On Transparent" || !r.options || r.options.length !== 3) {
+                throw new Error("read back value " + r.value + " label " + r.label);
+            }
+            return { value: r.value, label: r.label, options: r.options.length };
+        });
+
         record("project hygiene: rename an item, create folders, move items into them", function () {
             var comp = call("project", { command: "createComp", name: "hygiene", width: 64, height: 64, duration: 1, frameRate: 24 });
             var r = call("project", { command: "renameItem", itemId: comp.id, name: "hygiene renamed" });
@@ -430,6 +468,92 @@
             if (!msg || msg.indexOf("would overwrite") < 0 || msg.indexOf("overwrite:true") < 0) { throw new Error("no refusal with a hint: " + JSON.stringify(r).slice(0, 200)); }
             out.remove();
             return { refused: true, hint: msg.slice(0, 60) };
+        });
+
+        /*
+         * A batch that hit a render error used to leave its items queued; they
+         * then claimed the next batch's output paths and that job wrote nothing.
+         */
+        record("batch render: folders created, extension honoured, nothing left queued after a failure", function () {
+            var comp = call("project", { command: "createComp", name: "batchout", width: 16, height: 16, duration: 0.1, frameRate: 24 });
+            var rq = app.project.renderQueue, before = rq.numItems;
+            var dir = Folder.temp.fsName + "/mcp_batch_" + new Date().getTime();
+            var r = call("render", { command: "batch", jobs: [
+                { compId: comp.id, outputPath: dir + "/new/sub/a.mp4" },                        // folder made, H.264 by extension
+                { compId: comp.id, outputPath: dir + "/b.mp4", omTemplate: "Lossless" },         // template writes .mov
+                { compId: comp.id, outputPath: dir + "/c.xyz" } ] });                           // not a media extension
+            if (rq.numItems !== before) { throw new Error("queue grew from " + before + " to " + rq.numItems); }
+            var a = new File(dir + "/new/sub/a.mp4");
+            if (!a.exists || a.length === 0) { throw new Error("a.mp4 was not written into the new folder"); }
+            var byIndex = {};
+            for (var e = 0; e < r.errors.length; e++) { byIndex[r.errors[e].index] = r.errors[e].message; }
+            if (!byIndex[1] || byIndex[1].indexOf("writes .mov") < 0) { throw new Error("no extension-mismatch error: " + byIndex[1]); }
+            if (!byIndex[2]) { throw new Error("bad extension was not refused"); }
+            if (new File(dir + "/b.mov").exists) { throw new Error("a .mov was written for an .mp4 path"); }
+            a.remove();
+            return { rendered: r.rendered.length, errors: r.errors.length, queue: rq.numItems };
+        });
+
+        record("shape colour alpha becomes Opacity on create, and ae_set warns that AE ignores it", function () {
+            var sh = call("shapes", { compId: scratchCompId, kind: "rect", width: 40, height: 40, name: "alpha", fill: [0, 0, 0, 0.7] });
+            var L = __mcp_layerById(sh.id);
+            var fop = __mcp_propByPath(L, sh.paths.fillOpacity).value;
+            if (Math.abs(fop - 70) > 1e-3) { throw new Error("Fill Opacity is " + fop + ", wanted 70"); }
+            var w = call("set", { writes: [{ layerId: sh.id, path: sh.paths.fillColor, value: [1, 0, 0, 0.5] }] });
+            if (!w.warnings || w.warnings[0].code !== "alpha_ignored" || Math.abs(w.warnings[0].suggestedOpacity - 50) > 1e-3) {
+                throw new Error("no alpha_ignored warning: " + JSON.stringify(w).slice(0, 200));
+            }
+            return { fillOpacity: fop, warning: w.warnings[0].code };
+        });
+
+        record("masks: add takes an index and reorder moves a mask, so an add can sit above the holes", function () {
+            var id = call("layers", { compId: scratchCompId, command: "createSolid", color: [1,1,1], name: "order", width: 100, height: 100 }).id;
+            call("masks", { layerId: id, command: "add", name: "body", mode: "add" });
+            call("masks", { layerId: id, command: "add", name: "hole", mode: "subtract" });
+            var a = call("masks", { layerId: id, command: "add", name: "arm", mode: "add", index: 2 });
+            if (a.maskIndex !== 2) { throw new Error("indexed add landed at " + a.maskIndex); }
+            var r = call("masks", { layerId: id, command: "reorder", maskName: "hole", index: 3 });
+            if (r.order.join(",") !== "body,arm,hole") { throw new Error("order " + r.order.join(",")); }
+            var bad = expectFail("masks", { layerId: id, command: "reorder", maskName: "hole", index: 9 }, "op_failed");
+            return { order: r.order.join(","), from: r.from };
+        });
+
+        record("diagnostics finds an expression error deep inside a shape layer", function () {
+            var sh = call("shapes", { compId: scratchCompId, kind: "rect", width: 20, height: 20, name: "deepexpr" });
+            var op = sh.paths.fillColor.slice(0, sh.paths.fillColor.length - 1).concat(["ADBE Vector Fill Opacity"]);
+            try { call("setExpression", { writes: [{ layerId: sh.id, path: op, expression: "notDefinedAnywhere * 2" }] }); } catch (e) {}
+            var d = call("problems", {});
+            var found = false;
+            var all = d.expressionErrors.concat(d.disabledExpressions || []);
+            for (var i = 0; i < all.length; i++) { if (all[i].layerId === sh.id) { found = true; } }
+            // clear it so later cases see a healthy project
+            call("setExpression", { writes: [{ layerId: sh.id, path: op, expression: "" }] });
+            if (!found) { throw new Error("problems missed the fill-opacity expression error; scanned " + d.scanned.properties + " properties"); }
+            return { errors: d.expressionErrors.length, disabled: (d.disabledExpressions || []).length, properties: d.scanned.properties };
+        });
+
+        record("summaries and reads: root folder is null, groups are not properties, alpha mapping and text fields reported", function () {
+            var f = call("project", { command: "createFolder", name: "rootcheck" });
+            if (f.parentFolderId !== null) { throw new Error("root folder parentFolderId " + f.parentFolderId); }
+            call("project", { command: "deleteItem", itemId: f.folderId });
+
+            var sh = call("shapes", { compId: scratchCompId, kind: "rect", width: 20, height: 20, name: "leafpaths", fill: [0, 0, 0, 0.5] });
+            if (sh.paths.groupTransform || !sh.paths.groupPosition) { throw new Error("create still lists the transform group"); }
+            if (!sh.warnings || sh.warnings[0].code !== "alpha_mapped") { throw new Error("alpha mapping was silent"); }
+            var grpPath = sh.paths.groupPosition.slice(0, sh.paths.groupPosition.length - 1);
+            var pv = call("propertyValues", { layerId: sh.id, paths: [grpPath, sh.paths.groupPosition] });
+            if (pv.errors.length !== 1 || pv.errors[0].code !== "not_a_property" || pv.values.length !== 1) {
+                throw new Error("group read: " + pv.errors.length + " errors, " + pv.values.length + " values");
+            }
+
+            var tl = call("layers", { compId: scratchCompId, command: "createText", text: "fields" });
+            call("set", { writes: [{ layerId: tl.id, path: ["ADBE Text Properties", "ADBE Text Document"],
+                                     value: { justification: "center", tracking: 25, fillColor: [1, 0, 0] } }] });
+            var td = call("propertyValues", { layerId: tl.id, paths: [["ADBE Text Properties", "ADBE Text Document"]] }).values[0].value;
+            if (td.justification !== "center" || td.tracking !== 25 || !td.fillColor || td.fillColor[0] !== 1) {
+                throw new Error("text read " + JSON.stringify(td));
+            }
+            return { folderParent: f.parentFolderId, groupError: pv.errors[0].code, justification: td.justification };
         });
 
         record("setEase applies temporal easing sized to the property", function () {
