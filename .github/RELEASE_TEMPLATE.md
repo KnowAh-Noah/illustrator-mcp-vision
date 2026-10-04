@@ -1,3 +1,12 @@
+## Changes in __VERSION__
+
+- List source footage, native timing, interpretation overrides and eligibility through `ae_query media`, with an adapter contract for tools such as sam-ui.
+- Read and set effect popup labels, map mask keys through layer time, reorder masks, and address newly created shape groups.
+- Improve footage reads, font resolution, layer audio control and expression diagnostics.
+- Validate render settings before removing overwrite targets, clean up render queue items, and correctly write and report numbered image sequences.
+
+Validated with 145 unit tests and 78 live After Effects integration cases, plus live TIFF sequence, batch export and overwrite-preservation checks.
+
 ## Which file do I download?
 
 | You are on | Download |
