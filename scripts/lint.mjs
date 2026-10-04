@@ -142,8 +142,11 @@ if (cepPkg.type !== 'commonjs') {
 // went undocumented the moment the surface grew; a lint rule is the fix, not a
 // one-off doc edit.
 {
-  const toolsSrc = readFileSync(join(ROOT, 'cep/server/tools.js'), 'utf8');
-  const names = [...toolsSrc.matchAll(/name: '(ae_[a-z_]+)'/g)].map((m) => m[1]);
+  const names = [];
+  for (const [file, prefix] of [['cep/server/tools.js', 'ae_'], ['cep/server/tools-illustrator.js', 'ai_']]) {
+    const toolsSrc = readFileSync(join(ROOT, file), 'utf8');
+    names.push(...[...toolsSrc.matchAll(new RegExp(`name: '(${prefix}[a-z_]+)'`, 'g'))].map((m) => m[1]));
+  }
   const readme = readFileSync(join(ROOT, 'README.md'), 'utf8');
   const missing = [...new Set(names)].filter((n) => !readme.includes(n));
   if (missing.length) {

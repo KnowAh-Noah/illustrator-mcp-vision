@@ -13,6 +13,10 @@
  */
 
 const { callHost } = require('./bridge.js');
+const { currentProfile } = require('../server/app-profile.js');
+
+const PROFILE = currentProfile();
+const NAME = PROFILE.clientName;
 const { startServer, PORT, TOKEN_FILE } = require('./start-server.js');
 const fs = require('fs');
 
@@ -55,12 +59,12 @@ function readToken() {
  */
 function clientConfigs(port, token) {
   const url = `http://127.0.0.1:${port}/mcp`;
-  const t = token || '<open After Effects to generate a token>';
+  const t = token || `<open ${PROFILE.appName} to generate a token>`;
 
   // The token rides in env, not args: Claude Desktop on Windows (and some other
   // clients) mangle spaces inside arguments.
   const bridge = JSON.stringify(
-    { mcpServers: { 'ae-vision': {
+    { mcpServers: { [NAME]: {
       command: 'npx',
       args: ['-y', 'mcp-remote', url, '--header', 'Authorization:${AUTH_HEADER}', '--transport', 'http-only'],
       env: { AUTH_HEADER: `Bearer ${t}` },
@@ -75,7 +79,7 @@ function clientConfigs(port, token) {
     // "Missing expression after unary operator '--'".
     'Claude Code': {
       hint: 'Run in any terminal - Terminal, PowerShell, cmd or Git Bash. --scope user adds it to every project.',
-      body: `claude mcp add --transport http --scope user ae-vision ${url} --header "Authorization: Bearer ${t}"`,
+      body: `claude mcp add --transport http --scope user ${NAME} ${url} --header "Authorization: Bearer ${t}"`,
     },
     'Claude Desktop': {
       hint: 'Settings > Developer > Edit Config, merge this in, then quit and reopen Claude Desktop. Needs Node.js 18+.',
@@ -84,7 +88,7 @@ function clientConfigs(port, token) {
     'Codex / ChatGPT': {
       hint: 'Add to ~/.codex/config.toml. Shared by the Codex CLI, the IDE extension and the ChatGPT desktop app.',
       body:
-        `[mcp_servers.ae_vision]\n` +
+        `[mcp_servers.${NAME.replace(/-/g, '_')}]\n` +
         `url = "${url}"\n` +
         `http_headers = { Authorization = "Bearer ${t}" }\n` +
         `# optional - run tools without asking (needed for codex exec):\n` +
@@ -133,7 +137,16 @@ async function probeHealth(port) {
     const res = await fetch(`http://127.0.0.1:${port}/health`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
-    return res.ok ? await res.json() : null;
+    if (!res.ok) return null;
+    const body = await res.json();
+    // A server on this port that belongs to another app is not ours. Without
+    // this, an Illustrator panel whose profile came up wrong would show After
+    // Effects' server as connected.
+    if (body && body.service && body.service !== PROFILE.service) {
+      log(`port ${port} is held by ${body.service}, not ${PROFILE.service}`, true);
+      return null;
+    }
+    return body;
   } catch (err) {
     return null;
   }
@@ -148,7 +161,7 @@ async function refresh() {
     // but not using the SDK is deliberate - see CONTRIBUTING.md.
     $('node').textContent = health.nodeVersion;
     $('ae').textContent = health.host.reachable
-      ? `connected — ${health.host.aeVersion}`
+      ? `connected — ${health.host.appVersion || health.host.aeVersion}`
       : `unreachable — ${health.host.error && health.host.error.code}`;
     showConfig(PORT);
     return;
@@ -161,6 +174,8 @@ async function refresh() {
 
 async function boot() {
   $('node').textContent = process.version;
+  const appLabel = $('appLabel');
+  if (appLabel) appLabel.textContent = PROFILE.appName;
   log(`panel loaded, node ${process.version}`);
 
   // Give the headless extension a moment to claim the port first.
@@ -178,7 +193,7 @@ async function boot() {
 
   // A direct host ping proves ExtendScript answers, independent of the HTTP layer.
   const pong = await callHost('ping', {}, 5000);
-  log(pong.ok ? `host ping ok — ${pong.result.aeVersion}` : `host ping failed: ${pong.error.message}`, !pong.ok);
+  log(pong.ok ? `host ping ok — ${pong.result.appVersion || pong.result.aeVersion}` : `host ping failed: ${pong.error.message}`, !pong.ok);
 
   $('copy').addEventListener('click', () => {
     const text = $('config').textContent;

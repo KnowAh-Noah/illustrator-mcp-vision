@@ -7,9 +7,13 @@
 const { callHost } = require('./bridge.js');
 const { createServer, DEFAULT_PORT, TOKEN_FILE } = require('../server/http-server.js');
 const { createMcpHandler } = require('../server/mcp.js');
-const { createToolRegistry } = require('../server/tools.js');
+const { currentProfile } = require('../server/app-profile.js');
 
-const PORT = Number(process.env.AE_MCP_PORT || DEFAULT_PORT);
+const PROFILE = currentProfile();
+// Each app has its own tool surface; the transport underneath is shared.
+const { createToolRegistry } = require(require('path').join(__dirname, '..', 'server', PROFILE.tools));
+
+const PORT = Number(process.env[PROFILE.portEnv] || DEFAULT_PORT);
 
 async function startServer(onLog = () => {}) {
   const registry = createToolRegistry(callHost);

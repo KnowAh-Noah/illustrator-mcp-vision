@@ -13,7 +13,7 @@
  *     "EvalScript error.", so errors must be serialized by us or they are lost.
  */
 
-#include "./json-polyfill.jsx"
+#include "../json-polyfill.jsx"
 #include "./effect-enums.jsx"
 #include "./util.jsx"
 #include "./ops-query.jsx"

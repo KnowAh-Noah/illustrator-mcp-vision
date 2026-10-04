@@ -29,7 +29,7 @@ function host(t, options = {}) {
   };
   const ctx = { File, GetSettingsFormat: { STRING: 1 }, BlendingMode: {}, TrackMatteType: {}, app: { project: { renderQueue: rq } },
     __mcp_resolveComp: () => ({ id: 1, name: 'comp' }), __mcp_compById: () => ({ id: 1 }), RQItemStatus: { DONE: 'DONE' } };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../cep/host/ops-build.jsx'), 'utf8'), ctx);
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../cep/host/ae/ops-build.jsx'), 'utf8'), ctx);
   return { dir, ctx, rq };
 }
 

@@ -58,7 +58,7 @@ JSX
 jxa "$WORK/fresh.jsx"; sleep 3
 
 # 3. probe
-sed -e "s|__HOST_PATH__|$ROOT/cep/host/host.jsx|" \
+sed -e "s|__HOST_PATH__|$ROOT/cep/host/ae/host.jsx|" \
     -e "s|__RESULT_PATH__|$RESULT|" \
     "$ROOT/test/probe/capability-probe.jsx" > "$WORK/probe.jsx"
 echo "probing..."

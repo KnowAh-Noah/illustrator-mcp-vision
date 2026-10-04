@@ -9,7 +9,9 @@ cep/
   index.html          status panel
   client/             CEP-side JS: evalScript bridge, server startup, panel UI
   server/             MCP protocol, HTTP transport, tool surface, contact sheet
-  host/               ExtendScript that runs inside After Effects
+  host/ae/            ExtendScript that runs inside After Effects
+  host/ai/            ExtendScript that runs inside Illustrator
+  host/json-polyfill.jsx  shared by both hosts
 test/
   unit/               runs anywhere, gates CI
   integration/        needs a live After Effects
@@ -20,6 +22,25 @@ The split that matters: **`cep/host/*.jsx` runs inside After Effects on an ES3
 engine, everything else runs on CEP's Node.** They are different languages with
 the same file extension family, and mixing them up is the easiest mistake to
 make here.
+
+## More than one app
+
+The extension is listed for After Effects (`AEFT`) and Illustrator (`ILST`).
+Each app loads its own copy in its own process, so each runs its own server.
+What differs per app is decided in one place, `cep/server/app-profile.js`:
+port (8791 / 8792), token folder, service name, tool file (`tools.js` /
+`tools-illustrator.js`), MCP instructions and doc resources. The manifest gives
+each host its own `DispatchInfo`, which is how each app gets its own
+`host/<app>/host.jsx` and panel menu name. Everything else - HTTP, auth, the
+MCP protocol, the evalScript bridge, the contact sheet - is shared.
+
+After Effects keeps exactly what it had before, so existing configs keep
+working. Outside CEP (unit tests) `MCP_HOST_APP` picks the profile, defaulting
+to After Effects.
+
+Adding an app: a profile in `app-profile.js`, a `Host` and two `DispatchInfo`
+blocks in the manifest, a `cep/host/<app>/` host, a tools file, and docs under
+`docs/<app>/`. `test/unit/app-profile.test.cjs` checks the wiring.
 
 ## Why it is built this way
 
@@ -71,6 +92,7 @@ npm run lint             # parse, ES3 dialect, require/#include/manifest resolut
 npm test                 # unit tests, no After Effects needed
 npm run test:integration # against a live After Effects
 ./test/verify-live.sh    # against a running extension, nothing stubbed
+./test/verify-live-illustrator.sh   # the same, against Illustrator
 ```
 
 `npm run lint` and `npm test` gate CI. The integration suite cannot — no hosted
@@ -100,9 +122,9 @@ Beyond syntax:
 
 ## Adding an op
 
-1. Implement it in the right `cep/host/ops-*.jsx` table. Take stable ids, never
+1. Implement it in the right `cep/host/ae/ops-*.jsx` table. Take stable ids, never
    indices. Don't catch your own errors — `__mcp_exec` handles that uniformly.
-2. If it mutates the project, add it to `__mcp_mutating` in `cep/host/ops.jsx`
+2. If it mutates the project, add it to `__mcp_mutating` in `cep/host/ae/ops.jsx`
    so it runs inside an undo group.
 3. Expose it through a tool in `cep/server/tools.js`, or as a new `command` on
    an existing one. Prefer widening an existing tool: a few fat tools beat

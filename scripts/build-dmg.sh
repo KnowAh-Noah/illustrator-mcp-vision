@@ -35,6 +35,8 @@ cp "$ROOT/LICENSE" "$APP/Contents/Resources/payload/LICENSE"
 # Docs served as MCP resources; they live outside cep/, so copy them in.
 mkdir -p "$APP/Contents/Resources/payload/docs"
 cp "$ROOT"/docs/*.md "$APP/Contents/Resources/payload/docs/"
+mkdir -p "$APP/Contents/Resources/payload/docs/illustrator"
+cp "$ROOT"/docs/illustrator/*.md "$APP/Contents/Resources/payload/docs/illustrator/"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
