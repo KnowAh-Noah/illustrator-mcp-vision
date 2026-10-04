@@ -46,9 +46,9 @@ test('ae_query media dispatches to the media host op with its arguments', async 
 });
 
 test('media is a query op and never opens an undo group', () => {
-  const q = read('cep/host/ops-query.jsx');
+  const q = read('cep/host/ae/ops-query.jsx');
   assert.match(q, /var __mcp_queryOps = \{[\s\S]*\n    media: function \(args\)/);
-  const ops = read('cep/host/ops.jsx');
+  const ops = read('cep/host/ae/ops.jsx');
   const mutating = ops.slice(ops.indexOf('var __mcp_mutating'), ops.indexOf('function __mcp_wantsUndo'));
   assert.doesNotMatch(mutating, /\bmedia\b/, 'a read-only inventory must not be in __mcp_mutating');
 });
@@ -77,7 +77,7 @@ test('the contract sample uses only placeholder paths', () => {
 test('every field in the contract sample is one the host actually emits', () => {
   // If the host stops writing a field, adapters built on the sample break
   // silently. Assert each key appears as an assignment in the host source.
-  const src = read('cep/host/ops-query.jsx');
+  const src = read('cep/host/ae/ops-query.jsx');
   const media = src.slice(src.indexOf('function __mcp_mediaRecord'));
   const emitted = (obj, key) => new RegExp(`\\b${obj}\\.${key}\\s*=|\\b${key}:\\s`).test(media);
   const r = SAMPLE.result;

@@ -39,6 +39,7 @@ Source: "..\..\cep\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs cre
 Source: "..\..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 ; Docs served as MCP resources; they live outside cep/, so ship them too.
 Source: "..\..\docs\*.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "..\..\docs\illustrator\*.md"; DestDir: "{app}\docs\illustrator"; Flags: ignoreversion
 
 [Registry]
 ; Unsigned extensions require PlayerDebugMode, set per CSXS major version.
@@ -67,6 +68,18 @@ begin
       // wait forever on a dialog no one could see (found over SSH on Windows).
       SuppressibleMsgBox('Please quit After Effects first, then run this installer again.'#13#10#13#10 +
              'After Effects loads extensions when it starts, so it needs to be closed during installation.',
+             mbError, MB_OK, IDOK);
+      Result := False;
+    end;
+  end;
+  // The same extension also loads into Illustrator, so it has to be closed too.
+  if Result and Exec('cmd.exe', '/C tasklist /FI "IMAGENAME eq Illustrator.exe" | find /I "Illustrator.exe"',
+          '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    if ResultCode = 0 then
+    begin
+      SuppressibleMsgBox('Please quit Illustrator first, then run this installer again.'#13#10#13#10 +
+             'Illustrator loads extensions when it starts, so it needs to be closed during installation.',
              mbError, MB_OK, IDOK);
       Result := False;
     end;

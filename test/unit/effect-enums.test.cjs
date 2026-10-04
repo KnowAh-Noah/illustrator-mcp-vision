@@ -9,7 +9,7 @@ const vm = require('node:vm');
  * a BOM-less .jsx in the system encoding, so a raw curly apostrophe would turn
  * into mojibake in an option label - and then a label write would never match.
  */
-const file = path.join(__dirname, '../../cep/host/effect-enums.jsx');
+const file = path.join(__dirname, '../../cep/host/ae/effect-enums.jsx');
 const src = fs.readFileSync(file, 'utf8');
 
 test('effect-enums.jsx is pure ASCII', () => {

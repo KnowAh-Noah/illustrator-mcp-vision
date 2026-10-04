@@ -16,7 +16,7 @@ trap 'rm -rf "$WORK"' EXIT
 SUITE="$WORK/suite.jsx"
 RESULT="$WORK/result.json"
 
-sed -e "s|__HOST_PATH__|$ROOT/cep/host/host.jsx|" \
+sed -e "s|__HOST_PATH__|$ROOT/cep/host/ae/host.jsx|" \
     -e "s|__RESULT_PATH__|$RESULT|" \
     "$ROOT/test/integration/host-suite.jsx" > "$SUITE"
 

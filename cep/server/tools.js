@@ -22,7 +22,7 @@ const { bridgeInfo } = require('./bridge-info.js');
  * for a script CEP loads via ScriptPath (it came back as "8"), so the Node side
  * - which does know where it lives - hands the path to reloadHost.
  */
-const HOST_JSX = nodePath.join(__dirname, '..', 'host', 'host.jsx');
+const HOST_JSX = nodePath.join(__dirname, '..', 'host', 'ae', 'host.jsx');
 
 /*
  * Keys for ae_masks setPathKeys, read from a JSON file.

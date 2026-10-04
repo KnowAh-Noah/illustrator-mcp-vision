@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Regenerates cep/host/effect-enums.jsx: every built-in effect's popup options.
+// Regenerates cep/host/ae/effect-enums.jsx: every built-in effect's popup options.
 //
 // After Effects has no API that lists a popup's options, so the host op
 // `effectEnums` applies each effect in a throwaway comp and steps every popup
@@ -16,7 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const outFile = path.join(root, 'cep', 'host', 'effect-enums.jsx');
+const outFile = path.join(root, 'cep', 'host', 'ae', 'effect-enums.jsx');
 const progressFile = path.join(os.tmpdir(), 'ae-mcp-effect-enums.progress.json');
 const batch = Number(process.argv[2] || 20);
 const port = Number(process.env.AE_MCP_PORT || 8791);
