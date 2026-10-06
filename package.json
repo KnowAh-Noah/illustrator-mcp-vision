@@ -1,6 +1,6 @@
 {
   "name": "after-effects-mcp-vision",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "MCP server that lets an AI agent build and SEE inside live Adobe After Effects and Illustrator sessions.",
   "author": "VolksRat71",
   "repository": {
